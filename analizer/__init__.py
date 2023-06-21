@@ -38,6 +38,29 @@ COLUMNS_MAPPING={
     'Comment': 'COMMENT'
 }
 
+QTY_INCREASE_FACTORS = {
+    1: 1.1,
+    2: 1.5,
+    3: 1.51,
+    4: 1.56,
+    5: 1.58,
+    6: 1.61,
+    7: 1.65,
+    8: 1.65,
+    9: 1.65,
+    10: 1.65,
+    11: 1.65,
+    12: 1.65,
+    13: 1.65,
+    14: 1.65,
+    15: 1.65,
+    16: 1.65,
+    17: 1.65,
+    18: 1.65,
+    19: 1.65,
+    20: 1.65
+}
+
 
 def set_grid_id_by_one_side_start(df: pd.DataFrame, grid_id_col_name: str) -> pd.DataFrame:
     '''
@@ -266,13 +289,14 @@ def get_grids(df_orders: pd.DataFrame) -> pd.DataFrame:
         '''
         Calculate for one given grid potential drawdown of max order in grid if price will go worst case every next step
         '''
-        kq = QTY_FACTOR_FOR_AVERAGE
         kp = (OPEN_NEW_ORDER_PRICE_DELTA_PIPS - 1) * XAU_PIP_USD
         
         curr_price = r['DK_GRID_LAST_PRICE']
         curr_value = r['DK_OPEN_VALUE']
         curr_qty = r['QTY']
         for i in range(r['ORDER_ID'] + 1, EVE_MAX_ORDER_COUNT + 1):
+            kq = QTY_INCREASE_FACTORS[i - 1]
+
             curr_price = curr_price + kp
             curr_value = curr_value + (curr_price) * (curr_qty * kq - curr_qty)
             curr_qty = curr_qty * kq
@@ -280,8 +304,8 @@ def get_grids(df_orders: pd.DataFrame) -> pd.DataFrame:
         return abs(curr_value - curr_qty * (curr_price + kp))
 
     df_grids['DK_DRAWDOWN_20'] = df_grids.apply(calc_drawdown_for_max_grid_order, axis = 1)
-    df_grids['DK_DRAWDOWN_EQUITY_20'] = df_grids['DK_BALANCE_IN'] - df_grids['DK_DRAWDOWN_20']
     df_grids['DK_DRAWDOWN_20_RATIO'] = df_grids['DK_DRAWDOWN_20'] / df_grids['DK_BALANCE_IN']
+    df_grids['DK_EQUITY_20'] = df_grids['DK_BALANCE_IN'] - df_grids['DK_DRAWDOWN_20']
 
     df_grids['DK_LOT_1000'] = df_grids['DK_GRID_OPEN_QTY'] / (df_grids['DK_BALANCE_IN'] / 1000)
     df_grids = df_grids.sort_values(by='OPEN_DT')
@@ -356,7 +380,7 @@ def get_summary(df_full: pd.DataFrame, df_orders: pd.DataFrame, df_grids: pd.Dat
     return df_sum
 
 
-def get_chart(df_grids: pd.DataFrame):
+def get_summary_chart(df_grids: pd.DataFrame):
     df_plot = df_grids.copy()
     df_plot['DT'] = df_plot['CLOSE_DT'].dt.date
     df_plot['DK_DRAWDOWN_RATIO'] = df_plot['DK_DRAWDOWN_RATIO'] * 100
@@ -412,5 +436,33 @@ def get_chart(df_grids: pd.DataFrame):
 
     plt.xticks(df_plot['DT'], rotation=90, fontsize=6)
     fig.tight_layout()
+
+    return fig
+
+def get_worst_equity_20_chart(df_grids: pd.DataFrame):
+    df_worst_grid = df_grids.copy()
+    df_worst_grid = df_worst_grid[df_worst_grid['DK_EQUITY_20'] < 0]
+    df_worst_grid = df_worst_grid.sort_values(by=['ORDER_ID', 'DK_EQUITY_20'], ascending=[False, True])
+    df_worst_grid = df_worst_grid.sort_values(['ORDER_ID', 'DK_EQUITY_20'], ascending=[True, True]).groupby('ORDER_ID').head(1)
+
+    df_plot = df_worst_grid
+    # df_plot = df_plot[df_plot['DK_EQUITY_20'] < 0]
+    df_plot = df_plot.sort_values(by='ORDER_ID', ascending=False)
+
+    fig, ax = plt.subplots(nrows= 2, figsize=(16, 9), gridspec_kw={'height_ratios': [3, 1]})
+    ax[0].set_title('Какой самый большой дефицит баланса образовался бы (считай долив), если предположить, что \n сетки не закрылись, и цена продолжила движение против нас по худшему сценарию вплоть до 20 ордера')
+    ax[0].bar(df_plot['ORDER_ID'], df_plot['DK_EQUITY_20'], color=['red'])
+    ax[0].bar(df_plot['ORDER_ID'], df_plot['DK_BALANCE_IN'])
+
+    ax[1].bar(df_worst_grid['ORDER_ID'], df_worst_grid['DK_LOT_1000'], color='grey')
+
+    for i in range(2):
+        ax[i].set_xticks(np.arange(1, df_plot['ORDER_ID'].max() + 1))
+        ax[i].grid(True)
+
+    ax[1].set_xlabel('Количество ордеров в закрытых сетках, с которых началось моделирование худшего сценария, шт')
+
+    ax[0].legend(['Дефицит баланса / Долив, $', 'Баланс, $'])
+    ax[1].legend(['Лот на $1000 в реальной сетке с худшим моделируемым исходом'])
 
     return fig
