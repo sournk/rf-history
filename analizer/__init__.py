@@ -1,11 +1,16 @@
 # Common import 
-import datetime
+import math
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 
 # Settings And Const
+TYPE_FOR_BALANCE = "balance"
 COMMENT_PATTERN_FOR_ORDERS_ONLY = "[tp]"
+COMMENT_PATTERN_FOR_DEPOSIT = '(Deposit|Transfer|Withdraw)' # Withdraw is included for cancelation transaction deposit
+COMMENT_PATTERN_FOR_WITHDRAWAL = "Withdraw"
+COMMENT_PATTERN_FOR_CANCELED = "can"
 COMMENT_PATTERN_FOR_START_ORDERS = 'Start'
 COMMENT_PATTERN_FOR_SELL_ORDERS = 'SELL'
 COMMENT_PATTERN_FOR_BUY_ORDERS = 'BUY'
@@ -33,32 +38,6 @@ COLUMNS_MAPPING={
     'Comment': 'COMMENT'
 }
 
-
-def prepare_columns(df: pd.DataFrame) -> pd.DataFrame:
-    ''' 
-    Renames columns using COLUMNS_MAPPING.
-    Check all columns in df after, overwise call Exception/.
-    '''
-    df_res = df.copy()
-    df_res = df_res.rename(columns=COLUMNS_MAPPING)
-    if not all([c in df_res.columns for c in COLUMNS_MAPPING.values()]):
-        raise Exception("There're not all columns from COLUMNS_MAPPING in data frame")
-        
-    # Datetime casting
-    df_res['OPEN_DT'] = pd.to_datetime(df_res['OPEN_DT'])
-    df_res['CLOSE_DT'] = pd.to_datetime(df_res['CLOSE_DT'])
-
-    # Convert USDC to USD
-    df_res['PROFIT'] = df_res['PROFIT'] / 100
-
-    # Add columns
-    df_res['DK_OPEN_VALUE'] = df_res['OPEN_PRICE'] * df_res['QTY'] 
-    df_res['DK_BALANCE_OUT'] = df_res['PROFIT'].cumsum()
-    df_res['DK_BALANCE_IN'] = df_res['DK_BALANCE_OUT'] - df_res['PROFIT']
-    
-    return df_res
-
-# Net Recognize Different Ways
 
 def set_grid_id_by_one_side_start(df: pd.DataFrame, grid_id_col_name: str) -> pd.DataFrame:
     '''
@@ -177,6 +156,50 @@ def set_worst_grid_price(df: pd.DataFrame, new_col_name: str) -> pd.DataFrame:
     return df_res
 
 
+def prepare_columns(df: pd.DataFrame) -> pd.DataFrame:
+    ''' 
+    Renames columns using COLUMNS_MAPPING.
+    Check all columns in df after, overwise call Exception/.
+    '''
+    df_res = df.copy()
+    df_res = df_res.rename(columns=COLUMNS_MAPPING)
+    if not all([c in df_res.columns for c in COLUMNS_MAPPING.values()]):
+        raise Exception("There're not all columns from COLUMNS_MAPPING in data frame")
+    
+    # # Exclude CANCELLED transactions
+    # df_res = df_res[df_res['COMMENT'].str.contains(COMMENT_PATTERN_FOR_CANCELED, regex=False) == False]
+        
+    # Datetime casting
+    df_res['OPEN_DT'] = pd.to_datetime(df_res['OPEN_DT'])
+    df_res['CLOSE_DT'] = pd.to_datetime(df_res['CLOSE_DT'])
+
+    df_res = df_res.sort_values(by=['OPEN_DT', 'ORDER_ID'])
+
+    # Convert USDC to USD
+    df_res['PROFIT'] = df_res['PROFIT'] / 100
+    df_res['DK_TRANS'] = df_res['PROFIT']
+    df_res['DK_MISC_TRANS'] = 0
+
+    # Add columns
+    df_res['DK_DEPOSIT'] = 0
+    df_res['DK_WITHDRAWAL'] = 0
+    
+    df_res.loc[(df_res['SIDE'] == TYPE_FOR_BALANCE) & (df_res['PROFIT'] > 0) & (df_res['COMMENT'].str.contains(COMMENT_PATTERN_FOR_DEPOSIT)), ['DK_DEPOSIT']] = df_res['PROFIT']
+    df_res.loc[(df_res['SIDE'] == TYPE_FOR_BALANCE) & (df_res['PROFIT'] < 0), ['DK_WITHDRAWAL']] = df_res['PROFIT']
+    df_res.loc[(df_res['SIDE'] == TYPE_FOR_BALANCE) & (df_res['PROFIT'] < 0), ['DK_WITHDRAWAL']] = df_res['PROFIT']
+
+    df_res['DK_PROFIT_2'] = 0
+    df_res.loc[(df_res['SIDE'] != TYPE_FOR_BALANCE), ['DK_PROFIT_2']] = df_res['PROFIT']
+    df_res['DK_MISC_TRANS'] = df_res['PROFIT'] - (df_res['DK_DEPOSIT'] + df_res['DK_WITHDRAWAL'] + df_res['DK_PROFIT_2'])
+    df_res['PROFIT'] = df_res['DK_PROFIT_2']
+
+    df_res['DK_OPEN_VALUE'] = df_res['OPEN_PRICE'] * df_res['QTY'] 
+    df_res['DK_BALANCE_OUT'] = df_res['DK_TRANS'].cumsum()
+    df_res['DK_BALANCE_IN'] = df_res['DK_BALANCE_OUT'] - df_res['DK_TRANS']
+    
+    return df_res
+
+
 def extend_with_grid_details(df: pd.DataFrame) -> pd.DataFrame:
     '''
         Extends every order in source df with grid details:
@@ -235,6 +258,7 @@ def get_grids(df_orders: pd.DataFrame) -> pd.DataFrame:
 
     df_grids['DK_GRID_AVG_PRICE'] = df_grids['DK_OPEN_VALUE'] / df_grids['QTY']
     df_grids['DK_DRAWDOWN'] = abs(df_grids['QTY'] * (df_grids['DK_WORST_PRICE']) - df_grids['DK_OPEN_VALUE'])  
+    df_grids['DK_EQUITY'] = df_grids['DK_BALANCE_IN'] - df_grids['DK_DRAWDOWN']
     df_grids['DK_DRAWDOWN_RATIO'] = df_grids['DK_DRAWDOWN'] / df_grids['DK_BALANCE_IN']
     df_grids = df_grids.sort_values(by='DK_DRAWDOWN_RATIO', ascending=False)
 
@@ -256,6 +280,7 @@ def get_grids(df_orders: pd.DataFrame) -> pd.DataFrame:
         return abs(curr_value - curr_qty * (curr_price + kp))
 
     df_grids['DK_DRAWDOWN_20'] = df_grids.apply(calc_drawdown_for_max_grid_order, axis = 1)
+    df_grids['DK_DRAWDOWN_EQUITY_20'] = df_grids['DK_BALANCE_IN'] - df_grids['DK_DRAWDOWN_20']
     df_grids['DK_DRAWDOWN_20_RATIO'] = df_grids['DK_DRAWDOWN_20'] / df_grids['DK_BALANCE_IN']
 
     df_grids['DK_LOT_1000'] = df_grids['DK_GRID_OPEN_QTY'] / (df_grids['DK_BALANCE_IN'] / 1000)
@@ -263,7 +288,7 @@ def get_grids(df_orders: pd.DataFrame) -> pd.DataFrame:
 
     return df_grids
 
-def get_summary(df_orders: pd.DataFrame, df_grids: pd.DataFrame) -> pd.DataFrame:
+def get_summary(df_full: pd.DataFrame, df_orders: pd.DataFrame, df_grids: pd.DataFrame) -> pd.DataFrame:
     """ Calc summary info for account based on dataframes of orders and grids
 
     Args:
@@ -274,27 +299,23 @@ def get_summary(df_orders: pd.DataFrame, df_grids: pd.DataFrame) -> pd.DataFrame
         pd.DataFrame: Summary dataframe
     """
 
-    df_sum = df_orders.copy()
+    df_sum = df_full.copy()
 
     df_sum['DAYS'] = df_sum['OPEN_DT'].dt.date
-    df_sum['BALANCE'] = df_sum['PROFIT']
-    df_sum['DEPOSIT'] = 0
-    df_sum['WITHDRAWAL'] = 0
-    df_sum['PROFIT'] = 0
+    df_sum['BALANCE'] = df_sum['DK_TRANS']
     df_sum['HAS_ORDER_PROFIT'] = 0
-    df_sum.loc[df_sum['COMMENT'].str.contains('Deposit', regex=False), ['DEPOSIT']] = df_sum['BALANCE']
-    df_sum.loc[df_sum['COMMENT'].str.contains('Withdrawal', regex=False), ['WITHDRAWAL']] = df_sum['BALANCE']
-    df_sum.loc[df_sum['COMMENT'].str.contains(COMMENT_PATTERN_FOR_ORDERS_ONLY, regex=False), ['PROFIT']] = df_sum['BALANCE']
+
     df_sum.loc[df_sum['PROFIT'] >= 0, ['HAS_ORDER_PROFIT']] = 1
     df_sum['AVG_ORDER_PROFIT'] = df_sum['PROFIT']
     df_sum.loc[df_sum['PROFIT'] >= 0, ['MAX_ORDER_PROFIT']] = df_sum['PROFIT']
-    df_sum.loc[df_sum['PROFIT'] < 0, ['MAX_ORDER_LOSS']] = df_sum['PROFIT']
+    df_sum.loc[(df_sum['PROFIT'] < 0), ['MAX_ORDER_LOSS']] = df_sum['PROFIT']
 
     df_sum = df_sum.groupby(lambda x: True).agg({
         'DAYS': pd.Series.nunique,
         'BALANCE': 'sum',
-        'DEPOSIT': 'sum',
-        'WITHDRAWAL': 'sum',
+        'DK_DEPOSIT': 'sum',
+        'DK_WITHDRAWAL': 'sum',
+        'DK_MISC_TRANS': 'sum',
         'PROFIT': 'sum',
         'ORDER_ID': 'count',
         'HAS_ORDER_PROFIT': 'sum',
@@ -304,9 +325,19 @@ def get_summary(df_orders: pd.DataFrame, df_grids: pd.DataFrame) -> pd.DataFrame
     })
 
     df_grids = df_grids.sort_values(by=['OPEN_DT'])
+
+    df_sum['START_DATE'] = df_full['OPEN_DT'].min().date()
+    df_sum['FINISH_DATE'] = df_full['OPEN_DT'].max().date()
+    df_sum['CAL_DAYS'] = (df_full['OPEN_DT'].max().date() - df_full['OPEN_DT'].min().date()).days
+    
     df_sum['PROFIT_PCT'] = df_sum['PROFIT'] / df_sum['BALANCE']
+    df_sum['OWN_FUNDS'] = df_sum['DK_DEPOSIT'] + df_sum['DK_WITHDRAWAL']
     df_sum['PROFIT_PER_DAY'] = df_sum['PROFIT'] / df_sum['DAYS']
-    df_sum['ROI'] = df_sum['PROFIT'] / df_sum['DEPOSIT']
+    df_sum['PROFIT_PER_CAL_DAY'] = df_sum['PROFIT'] / df_sum['CAL_DAYS']
+    df_sum['ROA'] = df_sum['PROFIT'] / df_sum['BALANCE']
+    df_sum['ROA_DAYS'] = df_sum['BALANCE'] / df_sum['PROFIT_PER_CAL_DAY']
+    df_sum['ROI'] = df_sum['PROFIT'] / df_sum['OWN_FUNDS']
+    df_sum['ROI_DAYS'] = df_sum['OWN_FUNDS'] / df_sum['PROFIT_PER_CAL_DAY']
     df_sum['WIN_RATE'] = df_sum['HAS_ORDER_PROFIT'] / df_sum['ORDER_ID']
     df_sum['GRID_CNT'] = df_orders['DK_GRID_ID'].nunique()
     df_sum['MIN_LOT_1000'] = df_grids['DK_LOT_1000'].min()
@@ -325,56 +356,61 @@ def get_summary(df_orders: pd.DataFrame, df_grids: pd.DataFrame) -> pd.DataFrame
     return df_sum
 
 
-def get_chart(df_orders: pd.DataFrame):
-    df_plot = df_orders.copy()
-    df_plot['DT'] = df_plot['OPEN_DT'].dt.date
+def get_chart(df_grids: pd.DataFrame):
+    df_plot = df_grids.copy()
+    df_plot['DT'] = df_plot['CLOSE_DT'].dt.date
     df_plot['DK_DRAWDOWN_RATIO'] = df_plot['DK_DRAWDOWN_RATIO'] * 100
 
     df_plot = df_plot.groupby(by=['DT']).agg({
+        'ORDER_ID': 'max',
         'DK_DRAWDOWN': 'max',
         'DK_DRAWDOWN_RATIO': 'max',
         'PROFIT': 'sum',
         'DK_BALANCE_IN': 'min',
+        'DK_LOT_1000': 'mean',
         }).reset_index()
 
-    fig, ax = plt.subplots(nrows=3, sharex=True, figsize=(10,6))
+    fig, ax = plt.subplots(nrows=6, sharex=True, figsize=(16,9), gridspec_kw={'height_ratios': [3, 1, 2, 1, 2, 1]})
 
     ax[0].plot(df_plot['DT'], df_plot['DK_BALANCE_IN'], 'b-')
-    ax[1].plot(df_plot['DT'], df_plot['PROFIT'], 'g',
-            df_plot['DT'], df_plot['DK_DRAWDOWN'], 'r')
-    # ax01 = ax[0].twinx()
+    ax[1].bar(df_plot['DT'], df_plot['ORDER_ID'])
+    ax[2].bar(df_plot['DT'], df_plot['DK_DRAWDOWN'], color='red')
+    ax[3].bar(df_plot['DT'], df_plot['DK_DRAWDOWN_RATIO'], color='red')
+    ax[4].bar(df_plot['DT'], df_plot['PROFIT'], color='green')
+    ax[5].bar(df_plot['DT'], df_plot['DK_LOT_1000'], color='grey')
 
-    # ax[0].set_ylim(0)
-    # ax01.set_ylim(0, 12500)
+    ax[0].set_ylabel('Депозит, $', fontsize=8)
+    ax[1].set_ylabel('Max ордеров, шт',  fontsize=8)
+    ax[2].set_ylabel('Просадка, $',  fontsize=8)
+    ax[3].set_ylabel('Просадка, %',  fontsize=8)
+    ax[4].set_ylabel('Прибыль, $',  fontsize=8)
+    ax[5].set_ylabel('Лот на $1000',  fontsize=8)
 
-    ax[2].plot(df_plot['DT'], df_plot['DK_DRAWDOWN_RATIO'], 'r')
-    # plt.bar(df_plot['DT'], df_plot['Profit'])
+
+    def round_half_up(n, decimals=0):
+        multiplier = 10 ** decimals
+        return math.floor(n*multiplier + 0.5) / multiplier
+
+    def get_ndarray_for_ticks(min: float, max: float, cnt: int) -> np.ndarray:
+        step = round(round_half_up((max - min) / cnt))
+        r_cnt = len(str(step)) - 1
+        r = 10**r_cnt
+        step = math.ceil(step / r) * r
+
+        return np.arange(min, step * (cnt + 1), step)
+
+    ax[0].set_yticks(get_ndarray_for_ticks(0, df_plot['DK_BALANCE_IN'].max(), 10))  
+    ax[1].set_yticks(np.arange(0, round_half_up(df_plot['ORDER_ID'].max()/2)*2+1, 2))  
+    ax[2].set_yticks(get_ndarray_for_ticks(0, df_plot['DK_DRAWDOWN'].max(), 6))  
+    ax[3].set_yticks(get_ndarray_for_ticks(0, df_plot['DK_DRAWDOWN_RATIO'].max(), 6))  
+    ax[4].set_yticks(get_ndarray_for_ticks(0, df_plot['PROFIT'].max(), 10))  
+    ax[5].set_yticks(np.arange(0, df_plot['DK_LOT_1000'].max()+0.005, 0.005))
 
     for ax_i in ax:
         ax_i.grid()
-        # ax[0].locator_params(axis='y', nbins=5)
         ax_i.tick_params(axis='both', which='major', labelsize=6)
 
-    # df_plot['DK_DRAWDOWN_RATIO']
-
-        for line in ax_i.lines:
-            
-            for x,y in zip(df_plot['DT'], line.get_ydata()):
-                label = "{:.1f}".format(y)
-
-                ax_i.annotate(label, # this is the text
-                            (x,y), # these are the coordinates to position the label
-                            textcoords="offset points", # how to position the text
-                            xytext=(0,10), # distance from text to points (x,y)
-                            ha='center', # horizontal alignment can be left, right or cente
-                            fontsize=6,
-                            ) 
-
-
     plt.xticks(df_plot['DT'], rotation=90, fontsize=6)
-
-    ax[0].legend(['Депозит, $'])
-    ax[1].legend(['Прибыль, $', 'Просадка, $'])
-    ax[2].legend(['Просадка/Депозит, %'])
+    fig.tight_layout()
 
     return fig
