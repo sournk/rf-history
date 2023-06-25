@@ -216,6 +216,8 @@ def prepare_columns(df: pd.DataFrame) -> pd.DataFrame:
     df_res['DK_MISC_TRANS'] = df_res['PROFIT'] - (df_res['DK_DEPOSIT'] + df_res['DK_WITHDRAWAL'] + df_res['DK_PROFIT_2'])
     df_res['PROFIT'] = df_res['DK_PROFIT_2']
 
+    df_res  = df_res.sort_values(by=['ORDER_ID'])
+
     df_res['DK_OPEN_VALUE'] = df_res['OPEN_PRICE'] * df_res['QTY'] 
     df_res['DK_BALANCE_OUT'] = df_res['DK_TRANS'].cumsum()
     df_res['DK_BALANCE_IN'] = df_res['DK_BALANCE_OUT'] - df_res['DK_TRANS']
@@ -245,6 +247,19 @@ def extend_with_grid_details(df: pd.DataFrame) -> pd.DataFrame:
 
     df_res['DK_DRAWDOWN'] = abs(df_res['DK_GRID_QTY'] * (df_res['DK_WORST_PRICE']) - df_res['DK_GRID_VALUE']) 
     df_res['DK_DRAWDOWN_RATIO'] = df_res['DK_DRAWDOWN'] / df_res['DK_BALANCE_IN']
+
+    df_res = df_res.sort_values(by=['DK_GRID_ID', 'ORDER_ID'])
+    df_res['DK_OPEN_PRICE_DELTA'] = abs(df_res.shift(-1)['OPEN_PRICE'] - df_res['OPEN_PRICE'])
+    df_res['DK_QTY_FACTOR'] = df_res.shift(-1)['QTY'] / df_res['QTY']
+    df_res['DK_IS_LAST_GRID_ORDER'] = df_res.shift(-1)['DK_GRID_ID'] - df_res['DK_GRID_ID']
+    df_res['DK_DURATION_TD'] = df_res.shift(-1)['OPEN_DT'] - df_res['OPEN_DT']
+
+    df_res.loc[df_res['DK_IS_LAST_GRID_ORDER'] != 0, ['DK_OPEN_PRICE_DELTA', 'DK_QTY_DELTA', 'DK_DURATION_TD', 'DK_IS_LAST_GRID_ORDER']] = [0, 0, np.timedelta64(0, 's'), True]
+
+    df_res['DK_IS_LAST_GRID_ORDER'] = df_res['DK_IS_LAST_GRID_ORDER'].apply(bool)
+
+    g = df_res.groupby('DK_GRID_ID', as_index=False)
+    df_res['DK_GRID_ORDER_NUM'] = g.cumcount() + 1    
 
     return df_res
 
@@ -276,7 +291,8 @@ def get_grids(df_orders: pd.DataFrame) -> pd.DataFrame:
         'DK_GRID_LAST_PRICE': 'last',
         'DK_OPEN_VALUE': 'sum',
         'DK_WORST_PRICE': 'last',
-        'DK_BALANCE_IN': 'min',
+        'DK_BALANCE_IN': 'first',
+        'DK_DURATION_TD': 'sum',
     }).reset_index()
 
     df_grids['DK_GRID_AVG_PRICE'] = df_grids['DK_OPEN_VALUE'] / df_grids['QTY']
@@ -370,6 +386,9 @@ def get_summary(df_full: pd.DataFrame, df_orders: pd.DataFrame, df_grids: pd.Dat
     df_sum['LAST_LOT_1000'] = df_grids.iloc[- 1]['DK_LOT_1000']
     df_sum['AVG_GRID_ORDER_CNT'] = df_grids['ORDER_ID'].mean()
     df_sum['MAX_GRID_ORDER_CNT'] = df_grids['ORDER_ID'].max()
+    df_sum['MIN_GRID_DURATION'] = df_grids['DK_DURATION_TD'].min()
+    df_sum['AVG_GRID_DURATION'] = df_grids['DK_DURATION_TD'].mean()
+    df_sum['MAX_GRID_DURATION'] = df_grids['DK_DURATION_TD'].max()
     df_sum['AVG_GRID_PROFIT'] = df_grids['PROFIT'].mean()
     df_sum['MAX_GRID_PROFIT'] = df_grids['PROFIT'].max()
     df_sum['AVG_GRID_DRAWDOWN'] = df_grids['DK_DRAWDOWN'].mean()
@@ -423,12 +442,12 @@ def get_summary_chart(df_grids: pd.DataFrame):
 
         return np.arange(min, step * (cnt + 1), step)
 
-    ax[0].set_yticks(get_ndarray_for_ticks(0, df_plot['DK_BALANCE_IN'].max(), 10))  
+    # ax[0].set_yticks(get_ndarray_for_ticks(0, df_plot['DK_BALANCE_IN'].max(), 10))  
     ax[1].set_yticks(np.arange(0, round_half_up(df_plot['ORDER_ID'].max()/2)*2+1, 2))  
-    ax[2].set_yticks(get_ndarray_for_ticks(0, df_plot['DK_DRAWDOWN'].max(), 6))  
-    ax[3].set_yticks(get_ndarray_for_ticks(0, df_plot['DK_DRAWDOWN_RATIO'].max(), 6))  
-    ax[4].set_yticks(get_ndarray_for_ticks(0, df_plot['PROFIT'].max(), 10))  
-    ax[5].set_yticks(np.arange(0, df_plot['DK_LOT_1000'].max()+0.005, 0.005))
+    # ax[2].set_yticks(get_ndarray_for_ticks(0, df_plot['DK_DRAWDOWN'].max(), 6))  
+    # ax[3].set_yticks(get_ndarray_for_ticks(0, df_plot['DK_DRAWDOWN_RATIO'].max(), 6))  
+    # ax[4].set_yticks(get_ndarray_for_ticks(0, df_plot['PROFIT'].max(), 10))  
+    # ax[5].set_yticks(np.arange(0, df_plot['DK_LOT_1000'].max()+0.005, 0.005))
 
     for ax_i in ax:
         ax_i.grid()
@@ -438,6 +457,7 @@ def get_summary_chart(df_grids: pd.DataFrame):
     fig.tight_layout()
 
     return fig
+
 
 def get_worst_equity_20_chart(df_grids: pd.DataFrame):
     df_worst_grid = df_grids.copy()
@@ -466,3 +486,32 @@ def get_worst_equity_20_chart(df_grids: pd.DataFrame):
     ax[1].legend(['Лот на $1000 в реальной сетке с худшим моделируемым исходом'])
 
     return fig
+
+
+def get_new_order_params(df_orders: pd.DataFrame) -> pd.DataFrame:
+    def min_no_extraday(x):
+        return x[x < np.timedelta64(1, 'D')].min()
+    def mean_no_extraday(x):
+        return x[x < np.timedelta64(1, 'D')].mean()
+    def max_no_extraday(x):
+        return x[x < np.timedelta64(1, 'D')].max()
+
+    df_pd = df_orders.copy()
+    df_pd = df_pd[df_pd['DK_IS_LAST_GRID_ORDER'] == False]
+    
+    df_gpd = df_pd.groupby(by=['DK_GRID_ORDER_NUM']).agg({
+        'DK_QTY_FACTOR': ['min', 'mean', 'max'],
+        'DK_OPEN_PRICE_DELTA': ['min', 'mean', 'max'],
+        'DK_DURATION_TD': [min_no_extraday, mean_no_extraday, max_no_extraday],
+    })
+
+    df_gpd.columns = ['_'.join(col).strip().upper() for col in df_gpd.columns.values]
+
+    df_factors = pd.DataFrame.from_dict(QTY_INCREASE_FACTORS, orient='index', columns=['Values'])
+
+    df_gpd = pd.merge(df_gpd, df_factors, left_on='DK_GRID_ORDER_NUM', right_index=True).reset_index()
+
+    df_gpd['DK_GRID_ORDER_NUM'] = df_gpd['DK_GRID_ORDER_NUM'].astype(str) + '->' + (df_gpd['DK_GRID_ORDER_NUM'] + 1).astype(str)
+    df_gpd = df_gpd.rename(columns={'Values': 'DK_QTY_FACTOR_DOC'})
+
+    return df_gpd
