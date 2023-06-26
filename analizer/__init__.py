@@ -179,7 +179,7 @@ def set_worst_grid_price(df: pd.DataFrame, new_col_name: str) -> pd.DataFrame:
     return df_res
 
 
-def prepare_columns(df: pd.DataFrame) -> pd.DataFrame:
+def prepare_columns(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     ''' 
     Renames columns using COLUMNS_MAPPING.
     Check all columns in df after, overwise call Exception/.
@@ -215,12 +215,16 @@ def prepare_columns(df: pd.DataFrame) -> pd.DataFrame:
     df_res.loc[(df_res['SIDE'] != TYPE_FOR_BALANCE), ['DK_PROFIT_2']] = df_res['PROFIT']
     df_res['DK_MISC_TRANS'] = df_res['PROFIT'] - (df_res['DK_DEPOSIT'] + df_res['DK_WITHDRAWAL'] + df_res['DK_PROFIT_2'])
     df_res['PROFIT'] = df_res['DK_PROFIT_2']
+    df_res = df_res.drop('DK_PROFIT_2', axis=1)
 
     df_res  = df_res.sort_values(by=['ORDER_ID'])
 
     df_res['DK_OPEN_VALUE'] = df_res['OPEN_PRICE'] * df_res['QTY'] 
     df_res['DK_BALANCE_OUT'] = df_res['DK_TRANS'].cumsum()
     df_res['DK_BALANCE_IN'] = df_res['DK_BALANCE_OUT'] - df_res['DK_TRANS']
+
+    for k, v in kwargs.items():
+        df_res[k] = v
     
     return df_res
 
