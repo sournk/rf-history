@@ -101,11 +101,15 @@ async def process_uploaded_file(context: ContextTypes.DEFAULT_TYPE) -> None:
         temp_table_name = f'{config.TRANS_TABLE_NAME}_{uuid.uuid4().hex}'
         save_df_to_db(df=df_file, conn=conn, table_name=temp_table_name)
 
-        query = f'SELECT * FROM {temp_table_name} WHERE ORDER_ID NOT IN (SELECT ORDER_ID FROM {main_table_name} WHERE USER_ID=:user_id)'
-        df_new_rows = pd.read_sql(query, con=conn, params={'user_id': job.data['USER_ID']})
-        save_df_to_db(df=df_new_rows, conn=conn)
+        try:
+            query = f'SELECT * FROM {temp_table_name} WHERE ORDER_ID NOT IN (SELECT ORDER_ID FROM {main_table_name} WHERE USER_ID=:user_id)'
+            df_new_rows = pd.read_sql(query, con=conn, params={'user_id': job.data['USER_ID']})
+            save_df_to_db(df=df_new_rows, conn=conn)
+        except:
+            save_df_to_db(df=df_file, conn=conn)
 
         conn.execute(f'DROP TABLE {temp_table_name};')
+
 
         context.job_queue.run_once(get_tech_data_stat, 
                                when=0, 
