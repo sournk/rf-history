@@ -4,3 +4,4 @@ import os
 TELEGRAM_API = os.getenv('RF_HISTORY_TELEGRAM_API')
 TRANS_TABLE_NAME = 'Trans'
 UPLOAD_FILES_PATH = 'uploads'
+TEMP_FILES_PATH = 'tmp'

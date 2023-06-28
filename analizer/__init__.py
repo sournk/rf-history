@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import datetime
 
 # Settings And Const
 TYPE_FOR_BALANCE = "balance"
@@ -179,6 +180,14 @@ def set_worst_grid_price(df: pd.DataFrame, new_col_name: str) -> pd.DataFrame:
     return df_res
 
 
+def df_columns_cast(df: pd.DataFrame) -> pd.DataFrame:
+    # Datetime casting
+    df['OPEN_DT'] = pd.to_datetime(df['OPEN_DT'])
+    df['CLOSE_DT'] = pd.to_datetime(df['CLOSE_DT'])
+
+    return df
+
+
 def prepare_columns(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     ''' 
     Renames columns using COLUMNS_MAPPING.
@@ -192,10 +201,7 @@ def prepare_columns(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     # # Exclude CANCELLED transactions
     # df_res = df_res[df_res['COMMENT'].str.contains(COMMENT_PATTERN_FOR_CANCELED, regex=False) == False]
         
-    # Datetime casting
-    df_res['OPEN_DT'] = pd.to_datetime(df_res['OPEN_DT'])
-    df_res['CLOSE_DT'] = pd.to_datetime(df_res['CLOSE_DT'])
-
+    df_res = df_columns_cast(df_res)
     df_res = df_res.sort_values(by=['OPEN_DT', 'ORDER_ID'])
 
     # Convert USDC to USD
@@ -405,7 +411,7 @@ def get_summary(df_full: pd.DataFrame, df_orders: pd.DataFrame, df_grids: pd.Dat
 
 def get_summary_chart(df_grids: pd.DataFrame):
     df_plot = df_grids.copy()
-    df_plot['DT'] = df_plot['CLOSE_DT'].dt.date
+    df_plot['DT'] = df_plot['OPEN_DT'].dt.date
     df_plot['DK_DRAWDOWN_RATIO'] = df_plot['DK_DRAWDOWN_RATIO'] * 100
 
     df_plot = df_plot.groupby(by=['DT']).agg({
@@ -433,6 +439,8 @@ def get_summary_chart(df_grids: pd.DataFrame):
     ax[4].set_ylabel('Прибыль, $',  fontsize=8)
     ax[5].set_ylabel('Лот на $1000',  fontsize=8)
 
+    ax[0].set_title((f'Депозит/Прибыль/Посадки за период {df_plot["DT"].min()} - {df_plot["DT"].max()}\n'
+                     f'by https://t.me/rfhistoryanalyserbot at {datetime.datetime.now()}'))
 
     def round_half_up(n, decimals=0):
         multiplier = 10 ** decimals
@@ -474,7 +482,10 @@ def get_worst_equity_20_chart(df_grids: pd.DataFrame):
     df_plot = df_plot.sort_values(by='ORDER_ID', ascending=False)
 
     fig, ax = plt.subplots(nrows= 2, figsize=(16, 9), gridspec_kw={'height_ratios': [3, 1]})
-    ax[0].set_title('Какой самый большой дефицит баланса образовался бы (считай долив), если предположить, что \n сетки не закрылись, и цена продолжила движение против нас по худшему сценарию вплоть до 20 ордера')
+
+    ax[0].set_title((f'Какой самый большой дефицит баланса (долив) образовался бы за период {df_plot["OPEN_DT"].min()} - {df_plot["OPEN_DT"].max()},\n'
+                     'если предположить, что сетки не закрылись, и цена продолжила движение против нас по худшему сценарию вплоть до 20 ордера\n\n'
+                     f'by https://t.me/rfhistoryanalyserbot at {datetime.datetime.now()}'))
     ax[0].bar(df_plot['ORDER_ID'], df_plot['DK_EQUITY_20'], color=['red'])
     ax[0].bar(df_plot['ORDER_ID'], df_plot['DK_BALANCE_IN'])
 
