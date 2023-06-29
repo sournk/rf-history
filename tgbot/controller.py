@@ -11,7 +11,7 @@ import model
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
+    level=config.LOG_LEVEL,
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
