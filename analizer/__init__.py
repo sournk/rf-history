@@ -223,12 +223,6 @@ def prepare_columns(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     df_res['PROFIT'] = df_res['DK_PROFIT_2']
     df_res = df_res.drop('DK_PROFIT_2', axis=1)
 
-    df_res  = df_res.sort_values(by=['ORDER_ID'])
-
-    df_res['DK_OPEN_VALUE'] = df_res['OPEN_PRICE'] * df_res['QTY'] 
-    df_res['DK_BALANCE_OUT'] = df_res['DK_TRANS'].cumsum()
-    df_res['DK_BALANCE_IN'] = df_res['DK_BALANCE_OUT'] - df_res['DK_TRANS']
-
     for k, v in kwargs.items():
         df_res[k] = v
     
@@ -244,6 +238,12 @@ def extend_with_grid_details(df: pd.DataFrame) -> pd.DataFrame:
     '''
 
     df_res = df.copy()
+
+    df_res  = df_res.sort_values(by=['ORDER_ID'])
+
+    df_res['DK_OPEN_VALUE'] = df_res['OPEN_PRICE'] * df_res['QTY'] 
+    df_res['DK_BALANCE_OUT'] = df_res['DK_TRANS'].cumsum()
+    df_res['DK_BALANCE_IN'] = df_res['DK_BALANCE_OUT'] - df_res['DK_TRANS']    
 
     # Filter only orders without another tansactions such as deposits and withdrawals
     df_res = df_res[df_res['COMMENT'].str.contains(COMMENT_PATTERN_FOR_ORDERS_ONLY, regex=False)]
