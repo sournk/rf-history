@@ -228,7 +228,7 @@ async def get_summary(context: ContextTypes.DEFAULT_TYPE) -> None:
     for k, v in summary_answer_dict.items():
         await context.bot.send_message(job.chat_id, text=v)
 
-    temp_path = pathlib.Path(f"{config.TEMP_FILES_PATH}/{job.data['USER_ID']}")
+    temp_path = pathlib.Path(f"{config.SEND_FILES_PATH}/{job.data['USER_ID']}")
     temp_path.mkdir(parents=True, exist_ok=True)  # create path if not exists
     logging.debug(f'Dir {str(temp_path)} ready/created for pictures')
 
