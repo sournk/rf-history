@@ -6,6 +6,7 @@ import unicodedata
 import re
 import uuid
 import datetime
+import logging
 
 import sys
 import os.path
@@ -227,20 +228,25 @@ async def get_summary(context: ContextTypes.DEFAULT_TYPE) -> None:
     for k, v in summary_answer_dict.items():
         await context.bot.send_message(job.chat_id, text=v)
 
-    fig = an.get_summary_chart(df_grids)
-
     temp_path = pathlib.Path(f"{config.TEMP_FILES_PATH}/{job.data['USER_ID']}")
     temp_path.mkdir(parents=True, exist_ok=True)  # create path if not exists
+    logging.debug(f'Dir {str(temp_path)} ready/created for pictures')
 
-    temp_file_name = str(temp_path.joinpath(f'summary_{uuid.uuid4().hex}.png'))
-    fig.savefig(temp_file_name, format='png')
-    await context.bot.send_photo(job.chat_id, photo=open(temp_file_name, 'rb'))
+    time_stamp = datetime.datetime.now().strftime('%Y%m%dT%H%M%S')
+    uuid_file = uuid.uuid4().hex
+    summary_file_name = str(temp_path.joinpath(f'{time_stamp}_{uuid_file}_summary.png'))
+    drawdown_file_name = str(temp_path.joinpath(f'{time_stamp}_{uuid_file}_drawdown.png'))
 
-    temp_file_name = str(temp_path.joinpath(
-        f'drawdown_{uuid.uuid4().hex}.png'))
+    fig = an.get_summary_chart(df_grids)
+    fig.savefig(summary_file_name, format='png')
+    logging.debug(f'Summary chart saved in {summary_file_name}')
+
     fig = an.get_worst_equity_20_chart(df_grids=df_grids)
-    fig.savefig(temp_file_name, format='png')
-    await context.bot.send_photo(job.chat_id, photo=open(temp_file_name, 'rb'))
+    fig.savefig(drawdown_file_name, format='png')
+    logging.debug(f'Drawdown chart saved in {summary_file_name}')
+
+    await context.bot.send_photo(job.chat_id, photo=open(summary_file_name, 'rb'))
+    await context.bot.send_photo(job.chat_id, photo=open(drawdown_file_name, 'rb'))
 
 
 conn = sqlite3.connect('db.sqlite')
