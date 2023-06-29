@@ -242,6 +242,7 @@ async def get_summary(context: ContextTypes.DEFAULT_TYPE) -> None:
     logging.debug(f'Summary chart saved in {summary_file_name}')
 
     fig = an.get_worst_equity_20_chart(df_grids=df_grids)
+    logging.debug('get_worst_equity_20_chart finished')
     fig.savefig(drawdown_file_name, format='png')
     logging.debug(f'Drawdown chart saved in {summary_file_name}')
 
