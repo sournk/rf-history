@@ -228,6 +228,19 @@ def prepare_columns(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     
     return df_res
 
+def calc_balance(df: pd.DataFrame) -> pd.DataFrame:
+    """ Add columns of DK_BALANCE_IN and DK_BALANCE_OUT calculated as cumsum of DK_TRANS
+
+    Returns:
+        pd.DataFrame: Result DataFrame
+    """
+    df_res = df.copy()
+    df_res  = df_res.sort_values(by=['ORDER_ID'])
+    df_res['DK_BALANCE_OUT'] = df_res['DK_TRANS'].cumsum()
+    df_res['DK_BALANCE_IN'] = df_res['DK_BALANCE_OUT'] - df_res['DK_TRANS']    
+
+    return df_res
+
 
 def extend_with_grid_details(df: pd.DataFrame) -> pd.DataFrame:
     '''
@@ -238,12 +251,8 @@ def extend_with_grid_details(df: pd.DataFrame) -> pd.DataFrame:
     '''
 
     df_res = df.copy()
-
     df_res  = df_res.sort_values(by=['ORDER_ID'])
-
     df_res['DK_OPEN_VALUE'] = df_res['OPEN_PRICE'] * df_res['QTY'] 
-    df_res['DK_BALANCE_OUT'] = df_res['DK_TRANS'].cumsum()
-    df_res['DK_BALANCE_IN'] = df_res['DK_BALANCE_OUT'] - df_res['DK_TRANS']    
 
     # Filter only orders without another tansactions such as deposits and withdrawals
     df_res = df_res[df_res['COMMENT'].str.contains(COMMENT_PATTERN_FOR_ORDERS_ONLY, regex=False)]
@@ -352,7 +361,7 @@ def get_summary(df_full: pd.DataFrame, df_orders: pd.DataFrame, df_grids: pd.Dat
     df_sum = df_full.copy()
 
     df_sum['DAYS'] = df_sum['OPEN_DT'].dt.date
-    df_sum['BALANCE'] = df_sum['DK_TRANS']
+    df_sum['BALANCE'] = df_sum['DK_BALANCE_IN']
     df_sum['HAS_ORDER_PROFIT'] = 0
 
     df_sum.loc[df_sum['PROFIT'] >= 0, ['HAS_ORDER_PROFIT']] = 1
@@ -362,7 +371,7 @@ def get_summary(df_full: pd.DataFrame, df_orders: pd.DataFrame, df_grids: pd.Dat
 
     df_sum = df_sum.groupby(lambda x: True).agg({
         'DAYS': pd.Series.nunique,
-        'BALANCE': 'sum',
+        'BALANCE': 'last',
         'DK_DEPOSIT': 'sum',
         'DK_WITHDRAWAL': 'sum',
         'DK_MISC_TRANS': 'sum',

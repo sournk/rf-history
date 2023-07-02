@@ -153,6 +153,7 @@ async def get_tech_data_stat(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def get_summary(context: ContextTypes.DEFAULT_TYPE) -> None:
     job = context.job
     df_full = load_df_from_db(job.data['USER_ID'], conn=conn)
+    df_full = an.calc_balance(df_full)
 
     interval = job.data['INTERVAL']
 
