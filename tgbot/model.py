@@ -208,8 +208,8 @@ async def get_summary(context: ContextTypes.DEFAULT_TYPE) -> None:
                            'message004': (f"Прибыль: ${df_sum.iloc[0]['PROFIT']:,.2f}\n"
                                           f"Средняя прибыль в календарный день: ${df_sum.iloc[0]['PROFIT_PER_CAL_DAY']:,.2f}\n"
                                           f"Средняя прибыль в торговый день: ${df_sum.iloc[0]['PROFIT_PER_DAY']:,.2f}"),
-                           'message005': (f"ROA: {df_sum.iloc[0]['ROA']*100:,.1f}%\n"
-                                          f"ROA календарных дней: {df_sum.iloc[0]['ROA_DAYS']:,.0f}\n"
+                           'message005': (f"ROE: {df_sum.iloc[0]['ROE']*100:,.1f}%\n"
+                                          f"ROE календарных дней: {df_sum.iloc[0]['ROE_DAYS']:,.0f}\n"
                                           f"ROI: {df_sum.iloc[0]['ROI']*100:,.1f}%\n"
                                           f"ROI календарных дней: {df_sum.iloc[0]['ROI_DAYS']:,.0f}"),
                            'message006': (f"Ордеров: {df_sum.iloc[0]['ORDER_ID']:,.0f}\n"
