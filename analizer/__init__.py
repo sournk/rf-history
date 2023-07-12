@@ -387,7 +387,7 @@ def get_summary(df_full: pd.DataFrame, df_orders: pd.DataFrame, df_grids: pd.Dat
 
     df_sum['START_DATE'] = df_full['OPEN_DT'].min().date()
     df_sum['FINISH_DATE'] = df_full['OPEN_DT'].max().date()
-    df_sum['CAL_DAYS'] = (df_full['OPEN_DT'].max().date() - df_full['OPEN_DT'].min().date()).days
+    df_sum['CAL_DAYS'] = (df_full['OPEN_DT'].max().date() - df_full['OPEN_DT'].min().date()).days + 1
     
     df_sum['PROFIT_PCT'] = df_sum['PROFIT'] / df_sum['BALANCE']
     df_sum['OWN_FUNDS'] = df_sum['DK_DEPOSIT'] + df_sum['DK_WITHDRAWAL']
