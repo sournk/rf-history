@@ -383,6 +383,13 @@ def get_summary(df_full: pd.DataFrame, df_orders: pd.DataFrame, df_grids: pd.Dat
         'MAX_ORDER_LOSS': 'min',
     })
 
+    df_balance_avg = df_orders.copy()
+    df_balance_avg = df_balance_avg.sort_values('OPEN_DT')
+    df_balance_avg['DK_DAY'] = df_balance_avg['OPEN_DT'].dt.date
+    balance_in_day_avg = df_balance_avg.groupby('DK_DAY').agg({
+        'DK_BALANCE_IN': 'first'
+    })['DK_BALANCE_IN'].mean()    
+
     df_grids = df_grids.sort_values(by=['OPEN_DT'])
 
     df_sum['START_DATE'] = df_full['OPEN_DT'].min().date()
@@ -391,6 +398,7 @@ def get_summary(df_full: pd.DataFrame, df_orders: pd.DataFrame, df_grids: pd.Dat
     
     df_sum['PROFIT_PCT'] = df_sum['PROFIT'] / df_sum['BALANCE']
     df_sum['OWN_FUNDS'] = df_sum['DK_DEPOSIT'] + df_sum['DK_WITHDRAWAL']
+    df_sum['BALANCE_IN_DAY_AVG'] = balance_in_day_avg
     df_sum['PROFIT_PER_DAY'] = df_sum['PROFIT'] / df_sum['DAYS']
     df_sum['PROFIT_PER_CAL_DAY'] = df_sum['PROFIT'] / df_sum['CAL_DAYS']
     df_sum['ROE'] = df_sum['PROFIT'] / df_sum['BALANCE']

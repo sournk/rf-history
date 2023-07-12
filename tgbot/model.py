@@ -204,10 +204,14 @@ async def get_summary(context: ContextTypes.DEFAULT_TYPE) -> None:
                                           f"Пополнений: ${df_sum.iloc[0]['DK_DEPOSIT']:,.2f}\n"
                                           f"Снятий: ${df_sum.iloc[0]['DK_WITHDRAWAL']:,.2f}\n"
                                           f"Прочие движения: ${df_sum.iloc[0]['DK_MISC_TRANS']:,.2f}"),
-                           'message003': (f"Собственных средств: ${df_sum.iloc[0]['OWN_FUNDS']:,.2f}"),
-                           'message004': (f"Прибыль: ${df_sum.iloc[0]['PROFIT']:,.2f}\n"
+                           'message003': (f"Собственных средств: ${df_sum.iloc[0]['OWN_FUNDS']:,.2f}\n"
+                                          f"Прибыль: ${df_sum.iloc[0]['PROFIT']:,.2f}\n"),
+                           'message004': (f"Средний баланс на начало торгового дня: ${df_sum.iloc[0]['BALANCE_IN_DAY_AVG']:,.2f}\n"
                                           f"Средняя прибыль в календарный день: ${df_sum.iloc[0]['PROFIT_PER_CAL_DAY']:,.2f}\n"
-                                          f"Средняя прибыль в торговый день: ${df_sum.iloc[0]['PROFIT_PER_DAY']:,.2f}"),
+                                          f"Средняя прибыль в торговый день: ${df_sum.iloc[0]['PROFIT_PER_DAY']:,.2f}\n"
+                                          f"Доходность в календарный день: {df_sum.iloc[0]['PROFIT_PER_CAL_DAY'] / df_sum.iloc[0]['BALANCE_IN_DAY_AVG']*100:,.1f}%\n"
+                                          f"Доходность в месяц: {df_sum.iloc[0]['PROFIT_PER_CAL_DAY'] / df_sum.iloc[0]['BALANCE_IN_DAY_AVG']*30*100:,.1f}%\n"
+                                          f"Доходность в год: {df_sum.iloc[0]['PROFIT_PER_CAL_DAY'] / df_sum.iloc[0]['BALANCE_IN_DAY_AVG']*365*100:,.1f}%"),
                            'message005': (f"ROE: {df_sum.iloc[0]['ROE']*100:,.1f}%\n"
                                           f"ROE календарных дней: {df_sum.iloc[0]['ROE_DAYS']:,.0f}\n"
                                           f"ROI: {df_sum.iloc[0]['ROI']*100:,.1f}%\n"
