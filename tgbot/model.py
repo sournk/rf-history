@@ -87,6 +87,7 @@ async def get_file_from_message(message, context):
                                    'FILE_NAME': dst_file_name,
                                    'USER_ID': user.id,
                                    'USER_NAME': user.username,
+                                   'SAVED_DT': datetime.datetime.now()
                                })
 
 
@@ -200,12 +201,13 @@ async def get_summary(context: ContextTypes.DEFAULT_TYPE) -> None:
                                           f"Календарных дней: {df_sum.iloc[0]['CAL_DAYS']:,.0f}\n"
                                           f"Торговых дней: {df_sum.iloc[0]['DAYS']:,.0f}"),
 
-                           'message002': (f"Баланс: ${df_sum.iloc[0]['BALANCE']:,.2f}\n"
-                                          f"Пополнений: ${df_sum.iloc[0]['DK_DEPOSIT']:,.2f}\n"
-                                          f"Снятий: ${df_sum.iloc[0]['DK_WITHDRAWAL']:,.2f}\n"
-                                          f"Прочие движения: ${df_sum.iloc[0]['DK_MISC_TRANS']:,.2f}"),
-                           'message003': (f"Собственных средств: ${df_sum.iloc[0]['OWN_FUNDS']:,.2f}\n"
-                                          f"Прибыль: ${df_sum.iloc[0]['PROFIT']:,.2f}\n"),
+                           'message002': (f"Пополнения: ${df_sum.iloc[0]['DK_DEPOSIT']:,.2f}\n"
+                                          f"Переводы: ${df_sum.iloc[0]['DK_TRANSFER']:,.2f}\n"
+                                          f"Снятия: ${df_sum.iloc[0]['DK_WITHDRAWAL']:,.2f}\n"
+                                          f"Прочие движения: ${df_sum.iloc[0]['DK_MISC_TRANS']:,.2f}\n"
+                                          f"*Прибыль: ${df_sum.iloc[0]['PROFIT']:,.2f}*\n"),
+                           'message003': (f"Баланс: ${df_sum.iloc[0]['BALANCE']:,.2f}\n"
+                                          f"Собственных средств: ${df_sum.iloc[0]['OWN_FUNDS']:,.2f}"),
                            'message004': (f"Средний баланс на начало торгового дня: ${df_sum.iloc[0]['BALANCE_IN_DAY_AVG']:,.2f}\n"
                                           f"Средняя прибыль в календарный день: ${df_sum.iloc[0]['PROFIT_PER_CAL_DAY']:,.2f}\n"
                                           f"Средняя прибыль в торговый день: ${df_sum.iloc[0]['PROFIT_PER_DAY']:,.2f}\n"
@@ -231,7 +233,7 @@ async def get_summary(context: ContextTypes.DEFAULT_TYPE) -> None:
                            }
 
     for k, v in summary_answer_dict.items():
-        await context.bot.send_message(job.chat_id, text=v)
+        await context.bot.send_message(job.chat_id, text=v, parse_mode='Markdown')
 
     temp_path = pathlib.Path(f"{config.SEND_FILES_PATH}/{job.data['USER_ID']}")
     temp_path.mkdir(parents=True, exist_ok=True)  # create path if not exists

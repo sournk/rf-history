@@ -5,16 +5,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import datetime
+import re
 
 # Settings And Const
 TYPE_FOR_BALANCE = "balance"
 COMMENT_PATTERN_FOR_ORDERS_ONLY = "[tp]"
-COMMENT_PATTERN_FOR_DEPOSIT = '(Deposit|Transfer|Withdraw)' # Withdraw is included for cancelation transaction deposit
+COMMENT_PATTERN_FOR_DEPOSIT = 'Deposit' # Withdraw is included for cancelation transaction deposit
+COMMENT_PATTERN_FOR_TRANSFER = 'Transfer' # Withdraw is included for cancelation transaction deposit
 COMMENT_PATTERN_FOR_WITHDRAWAL = "Withdraw"
 COMMENT_PATTERN_FOR_CANCELED = "can"
 COMMENT_PATTERN_FOR_START_ORDERS = 'Start'
 COMMENT_PATTERN_FOR_SELL_ORDERS = 'SELL'
 COMMENT_PATTERN_FOR_BUY_ORDERS = 'BUY'
+COMMENT_PATTERN_FOR_CANCELS = 'canceled'
 
 OPEN_NEW_ORDER_PRICE_DELTA_PIPS = 180 # Eve average position when price goes more then 180 pips
 XAU_PIP_USD = 0.01 # 1 pip = 0.01 for XAU
@@ -187,41 +190,46 @@ def df_columns_cast(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+def delete_canceled_trans_from_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Some DF has canceled transactions. Every cancellation consists 2 transaction with opposite signs, e.g.:
+    1st transation comment = 'Withdraw CCTT #21197003'
+    2nd transation comment = 'Withdraw canceled 21197003'
+
+    To find all pairs of these transactions:
+        1. Find all trans with keyword 'canceled'
+        2. Parse only numbers from that comments.
+        3. Find trans with found number in comment.
+
+    Args:
+        df (pd.DataFrame): Source DF
+
+    Returns:
+        pd.DataFrame: DF without canceled trans
+    """    
+    
+    df_cancels = df.copy()
+    df_cancels = df_cancels[df_cancels['COMMENT'].str.contains(COMMENT_PATTERN_FOR_CANCELED)]
+    trans_codes_list = [re.findall('[0-9]+', comment)[0] for comment in df_cancels['COMMENT']]
+
+    df_cancels = df.copy()
+    df_cancels['DELETED'] = 0
+    for trans_code in trans_codes_list:
+        df_cancels.loc[(df_cancels['COMMENT'].str.contains(trans_code, regex=False)), 'DELETED'] = 1
+
+    return df_cancels[df_cancels['DELETED'] == 0]
 
 def prepare_columns(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     ''' 
-    Renames columns using COLUMNS_MAPPING.
-    Check all columns in df after, overwise call Exception/.
+    1. Renames columns using COLUMNS_MAPPING. If there're no all required columns in df raises Exception.
+    2. Add to DF meta columns from **kwargs
     '''
     df_res = df.copy()
     df_res = df_res.rename(columns=COLUMNS_MAPPING)
     if not all([c in df_res.columns for c in COLUMNS_MAPPING.values()]):
-        raise Exception("There're not all columns from COLUMNS_MAPPING in data frame")
+        raise Exception("There're not all columns from COLUMNS_MAPPING in dataframe")
     
-    # # Exclude CANCELLED transactions
-    # df_res = df_res[df_res['COMMENT'].str.contains(COMMENT_PATTERN_FOR_CANCELED, regex=False) == False]
-        
     df_res = df_columns_cast(df_res)
     df_res = df_res.sort_values(by=['OPEN_DT', 'ORDER_ID'])
-
-    # Convert USDC to USD
-    df_res['PROFIT'] = df_res['PROFIT'] / 100
-    df_res['DK_TRANS'] = df_res['PROFIT']
-    df_res['DK_MISC_TRANS'] = 0
-
-    # Add columns
-    df_res['DK_DEPOSIT'] = 0
-    df_res['DK_WITHDRAWAL'] = 0
-    
-    df_res.loc[(df_res['SIDE'] == TYPE_FOR_BALANCE) & (df_res['PROFIT'] > 0) & (df_res['COMMENT'].str.contains(COMMENT_PATTERN_FOR_DEPOSIT)), ['DK_DEPOSIT']] = df_res['PROFIT']
-    df_res.loc[(df_res['SIDE'] == TYPE_FOR_BALANCE) & (df_res['PROFIT'] < 0), ['DK_WITHDRAWAL']] = df_res['PROFIT']
-    df_res.loc[(df_res['SIDE'] == TYPE_FOR_BALANCE) & (df_res['PROFIT'] < 0), ['DK_WITHDRAWAL']] = df_res['PROFIT']
-
-    df_res['DK_PROFIT_2'] = 0
-    df_res.loc[(df_res['SIDE'] != TYPE_FOR_BALANCE), ['DK_PROFIT_2']] = df_res['PROFIT']
-    df_res['DK_MISC_TRANS'] = df_res['PROFIT'] - (df_res['DK_DEPOSIT'] + df_res['DK_WITHDRAWAL'] + df_res['DK_PROFIT_2'])
-    df_res['PROFIT'] = df_res['DK_PROFIT_2']
-    df_res = df_res.drop('DK_PROFIT_2', axis=1)
 
     for k, v in kwargs.items():
         df_res[k] = v
@@ -234,8 +242,31 @@ def calc_balance(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Result DataFrame
     """
+
     df_res = df.copy()
-    df_res  = df_res.sort_values(by=['ORDER_ID'])
+    df_res = df_res.sort_values(by=['OPEN_DT', 'ORDER_ID'])
+
+    # Convert USDC to USD
+    df_res['PROFIT'] = df_res['PROFIT'] / 100
+    df_res['DK_TRANS'] = df_res['PROFIT']
+    df_res['DK_MISC_TRANS'] = 0
+
+    # Add columns
+    df_res['DK_DEPOSIT'] = 0
+    df_res['DK_TRANSFER'] = 0
+    df_res['DK_WITHDRAWAL'] = 0
+    
+    df_res.loc[(df_res['SIDE'] == TYPE_FOR_BALANCE) & (df_res['COMMENT'].str.contains(COMMENT_PATTERN_FOR_DEPOSIT)), ['DK_DEPOSIT']] = df_res['PROFIT']
+    df_res.loc[(df_res['SIDE'] == TYPE_FOR_BALANCE) & (df_res['COMMENT'].str.contains(COMMENT_PATTERN_FOR_TRANSFER)), ['DK_TRANSFER']] = df_res['PROFIT']
+    df_res.loc[(df_res['SIDE'] == TYPE_FOR_BALANCE) & (df_res['COMMENT'].str.contains(COMMENT_PATTERN_FOR_WITHDRAWAL)), ['DK_WITHDRAWAL']] = df_res['PROFIT']
+
+    df_res['DK_PROFIT_2'] = 0
+    df_res.loc[(df_res['SIDE'] != TYPE_FOR_BALANCE), ['DK_PROFIT_2']] = df_res['PROFIT']
+    df_res['DK_MISC_TRANS'] = df_res['PROFIT'] - (df_res['DK_DEPOSIT'] + df_res['DK_WITHDRAWAL'] + df_res['DK_PROFIT_2'])
+    df_res['PROFIT'] = df_res['DK_PROFIT_2']
+    df_res = df_res.drop('DK_PROFIT_2', axis=1)
+
+    df_res = df_res.sort_values(by=['ORDER_ID'])
     df_res['DK_BALANCE_OUT'] = df_res['DK_TRANS'].cumsum()
     df_res['DK_BALANCE_IN'] = df_res['DK_BALANCE_OUT'] - df_res['DK_TRANS']    
 
@@ -373,6 +404,7 @@ def get_summary(df_full: pd.DataFrame, df_orders: pd.DataFrame, df_grids: pd.Dat
         'DAYS': pd.Series.nunique,
         'BALANCE': 'last',
         'DK_DEPOSIT': 'sum',
+        'DK_TRANSFER': 'sum',
         'DK_WITHDRAWAL': 'sum',
         'DK_MISC_TRANS': 'sum',
         'PROFIT': 'sum',
@@ -397,13 +429,13 @@ def get_summary(df_full: pd.DataFrame, df_orders: pd.DataFrame, df_grids: pd.Dat
     df_sum['CAL_DAYS'] = (df_full['OPEN_DT'].max().date() - df_full['OPEN_DT'].min().date()).days + 1
     
     df_sum['PROFIT_PCT'] = df_sum['PROFIT'] / df_sum['BALANCE']
-    df_sum['OWN_FUNDS'] = df_sum['DK_DEPOSIT'] + df_sum['DK_WITHDRAWAL']
+    df_sum['OWN_FUNDS'] = max(df_sum['DK_DEPOSIT'][0]+ df_sum['DK_TRANSFER'][0] + df_sum['DK_WITHDRAWAL'][0], 0)
     df_sum['BALANCE_IN_DAY_AVG'] = balance_in_day_avg
     df_sum['PROFIT_PER_DAY'] = df_sum['PROFIT'] / df_sum['DAYS']
     df_sum['PROFIT_PER_CAL_DAY'] = df_sum['PROFIT'] / df_sum['CAL_DAYS']
     df_sum['ROE'] = df_sum['PROFIT'] / df_sum['BALANCE']
     df_sum['ROE_DAYS'] = df_sum['BALANCE'] / df_sum['PROFIT_PER_CAL_DAY']
-    df_sum['ROI'] = df_sum['PROFIT'] / df_sum['OWN_FUNDS']
+    df_sum['ROI'] = df_sum['PROFIT'] / df_sum['OWN_FUNDS'][0] if df_sum['OWN_FUNDS'][0] != 0 else 0
     df_sum['ROI_DAYS'] = df_sum['OWN_FUNDS'] / df_sum['PROFIT_PER_CAL_DAY']
     df_sum['WIN_RATE'] = df_sum['HAS_ORDER_PROFIT'] / df_sum['ORDER_ID']
     df_sum['GRID_CNT'] = df_orders['DK_GRID_ID'].nunique()
