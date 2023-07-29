@@ -39,7 +39,7 @@ def slugify(value, allow_unicode=False):
 
 def load_df_from_file(file_name: str, **kwargs) -> pd.DataFrame:
     df = pd.read_excel(file_name)
-    df = an.prepare_columns(df, **kwargs)
+    df = an.prepare_columns(df, an.COLUMNS_MAPPING_XLS, **kwargs)
 
     return df
 

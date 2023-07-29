@@ -25,7 +25,7 @@ XAU_PIP_USD = 0.01 # 1 pip = 0.01 for XAU
 QTY_FACTOR_FOR_AVERAGE = 1.65 #todo Must use table
 EVE_MAX_ORDER_COUNT = 20
 
-COLUMNS_MAPPING={
+COLUMNS_MAPPING_XLS={
     'Deal': 'ORDER_ID', 
     'Open time': 'OPEN_DT', 
     'Type': 'SIDE', 
@@ -183,13 +183,6 @@ def set_worst_grid_price(df: pd.DataFrame, new_col_name: str) -> pd.DataFrame:
     return df_res
 
 
-def df_columns_cast(df: pd.DataFrame) -> pd.DataFrame:
-    # Datetime casting
-    df['OPEN_DT'] = pd.to_datetime(df['OPEN_DT'])
-    df['CLOSE_DT'] = pd.to_datetime(df['CLOSE_DT'])
-
-    return df
-
 def delete_canceled_trans_from_df(df: pd.DataFrame) -> pd.DataFrame:
     """Some DF has canceled transactions. Every cancellation consists 2 transaction with opposite signs, e.g.:
     1st transation comment = 'Withdraw CCTT #21197003'
@@ -217,24 +210,6 @@ def delete_canceled_trans_from_df(df: pd.DataFrame) -> pd.DataFrame:
         df_cancels.loc[(df_cancels['COMMENT'].str.contains(trans_code, regex=False)), 'DELETED'] = 1
 
     return df_cancels[df_cancels['DELETED'] == 0]
-
-def prepare_columns(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
-    ''' 
-    1. Renames columns using COLUMNS_MAPPING. If there're no all required columns in df raises Exception.
-    2. Add to DF meta columns from **kwargs
-    '''
-    df_res = df.copy()
-    df_res = df_res.rename(columns=COLUMNS_MAPPING)
-    if not all([c in df_res.columns for c in COLUMNS_MAPPING.values()]):
-        raise Exception("There're not all columns from COLUMNS_MAPPING in dataframe")
-    
-    df_res = df_columns_cast(df_res)
-    df_res = df_res.sort_values(by=['OPEN_DT', 'ORDER_ID'])
-
-    for k, v in kwargs.items():
-        df_res[k] = v
-    
-    return df_res
 
 def calc_balance(df: pd.DataFrame) -> pd.DataFrame:
     """ Add columns of DK_BALANCE_IN and DK_BALANCE_OUT calculated as cumsum of DK_TRANS
