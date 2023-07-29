@@ -2,14 +2,16 @@ from redis import Redis
 from rq import Queue
 import logging
 import sys
+import sqlite3
 
 import statement_processor
+import ftp_scanner
 
 sys.path.append("..")
 import config
 from config import statement_dispatcher_logger as statement_dispatcher_logger
 
-if __name__ == '__main__':
+def enqueue_process_statement_file():
     ftp_user_name = '123456789'
     src_file_name = f'{config.SRC_FTP_DIR}/{ftp_user_name}/{config.STATEMENT_FILENAME}'
     
@@ -22,5 +24,15 @@ if __name__ == '__main__':
     
     statement_dispatcher_logger.info(f'Enqueue statement processing {job}')
     
+def enqueue_scan_ftp_for_updates():
+    ftp_user_name = '123456789'
+    src_file_name = f'{config.SRC_FTP_DIR}/{ftp_user_name}/{config.STATEMENT_FILENAME}'
+    
+    q = Queue(connection=Redis(), name=config.FTP_SCAN_QUEUE_NAME)
+    job = q.enqueue(ftp_scanner.scan_ftp_for_updates)
+    
+    statement_dispatcher_logger.info(f'Enqueue scan FTP for updates {job}')
 
-    # 1. Проверить dt обновления файла. Обработать только свежие файлы.
+
+if __name__ == '__main__':
+    enqueue_scan_ftp_for_updates()
