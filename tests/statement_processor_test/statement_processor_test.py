@@ -67,6 +67,24 @@ class TestStatementProcessor(unittest.TestCase):
         # Check sum(PROFIT)
         res = cur.execute("SELECT SUM(PROFIT) FROM Trans")
         assert(abs(1443066-res.fetchone()[0]) < 0.1)
+
+    def test_processing_with_incorrect_account_id_in_file_mt4_template(self):
+        with tempfile.TemporaryDirectory(dir='tests/statement_processor_test') as dst_temp_processing_dir:
+            with self.assertRaises(sp.StatementProcessingError):
+                sp.process_statement_file(telegram_user_id=self.telegram_user_id,
+                                        ftp_user_id=self.ftp_user_id,
+                                        src_file_name='tests/statement_processor_test/statement_mt4_part_wrong_account_id.htm',
+                                        dst_processing_dir=dst_temp_processing_dir,
+                                        conn=self.conn)
+        
+    def test_processing_with_incorrect_account_id_in_file_roboforex_template(self):
+        with tempfile.TemporaryDirectory(dir='tests/statement_processor_test') as dst_temp_processing_dir:
+            with self.assertRaises(sp.StatementProcessingError):
+                sp.process_statement_file(telegram_user_id=self.telegram_user_id,
+                                        ftp_user_id=self.ftp_user_id,
+                                        src_file_name='tests/statement_processor_test/statement_roboforex_june_wrong_account_id.html',
+                                        dst_processing_dir=dst_temp_processing_dir,
+                                        conn=self.conn)
         
     def test_processing_multi_files_with_intersection_trans(self):
         with tempfile.TemporaryDirectory(dir='tests/statement_processor_test') as dst_temp_processing_dir:
