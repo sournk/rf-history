@@ -14,31 +14,29 @@ def scan_ftp_for_updates() -> None:
     df_accounts = pd.read_sql('SELECT * FROM ACCOUNTS', 
                               con=conn)
     
-    df_accounts['LAST_CHECK_DT'] = pd.to_datetime(df_accounts['LAST_CHECK_DT'], errors='ignore')
-    df_accounts['LAST_UPDATE_DT'] = pd.to_datetime(df_accounts['LAST_UPDATE_DT'], errors='ignore')
-    
     df_accounts = df_accounts[df_accounts['ACTIVE'] == 1]
     df_accounts = df_accounts.sort_values(by='LAST_CHECK_DT')
+    statement_dispatcher_logger.debug(f'Got total list account accounts {len(df_accounts.shape)}')
     
     for idx, row in df_accounts.iterrows():
         src_ftp_file = pathlib.Path(f'{config.SRC_FTP_DIR}/{row["FTP_USER_ID"]}/{config.STATEMENT_FILENAME}')
+        statement_dispatcher_logger.debug(f'Start update scan for {str(src_ftp_file)}')
         
         if src_ftp_file.exists():
-            # src_ftp_file.lstat().st_mtime #Output: 1496134873.8279443
-            modified_dt = datetime.datetime.fromtimestamp(src_ftp_file.lstat().st_mtime)
+            file_modified_dt = datetime.datetime.fromtimestamp(src_ftp_file.lstat().st_mtime)
+            last_check_dt = datetime.datetime.fromisoformat(row["LAST_CHECK_DT"]) if row["LAST_CHECK_DT"] else None
             
-            if (row['LAST_CHECK_DT']) or (modified_dt > row['LAST_CHECK_DT']):
+            if (not last_check_dt) or (file_modified_dt > last_check_dt):
                 cur = conn.cursor()
-                cur.execute('UPDATE ACCOUNTS SET LAST_CHECK_DT = "123" WHERE FTP_USER_ID = "123456789"')
+                cur.execute('UPDATE ACCOUNTS SET LAST_CHECK_DT = ? WHERE FTP_USER_ID = ?', (datetime.datetime.now(), row["FTP_USER_ID"]))
                 conn.commit()
-                statement_dispatcher_logger.debug(f'Enqueue !!! {src_ftp_file} - {modified_dt=} {row["LAST_CHECK_DT"]=}')
+                
+                statement_dispatcher_logger.debug(f'Enqueue processing modified file {src_ftp_file}')
             else:
-                statement_dispatcher_logger.debug(f'Skip {src_ftp_file} - {modified_dt}')
+                statement_dispatcher_logger.debug(f'Skipping not modified file {file_modified_dt} {src_ftp_file}')
         else:
-            statement_dispatcher_logger.debug(f'File is not exists: {src_ftp_file}')
+            statement_dispatcher_logger.debug(f'File is not exists {src_ftp_file}')
+            
+        statement_dispatcher_logger.info(f'File scan finished {src_ftp_file}')
 
-        # modification dt of src_ftp_file > LAST_CHECK_DT
-            # update check dt in DB 
-            # enqueue file processing
-        # else skip + log
 
